@@ -1,10 +1,12 @@
+import copy
+
 import torch
 import torch.nn as nn
 import numpy as np
 from core.utils.skeleton_utils import (
-    Skeleton, 
-    SMPLSkeleton, 
-    calculate_kinematic,
+    Skeleton,
+    SMPLSkeleton,
+    calculate_kinematic, skt_from_smpl,
 )
 from typing import Optional, Dict, Any
 from einops import rearrange
@@ -12,7 +14,6 @@ from einops import rearrange
 class PoseOpt(nn.Module):
     """
     Pose optimization module
-
     """
 
     def __init__(
@@ -102,6 +103,28 @@ class PoseOpt(nn.Module):
             skel_type=self.skel_type,
             unroll_kinematic_chain=unroll,
         )
+
+
+        bone_poses = copy.deepcopy(bones)
+        # Here, we'll need to perturb the bone poses. Don't need to perturb root rotation,
+        # as the person should still always face -y
+        # kp3d will need to be adjusted as well, which can be done by just passing in the pelvis location of kp3d instead.
+        # YOu can then re-extract kp3d using l2ws's translation portion
+        # double check shape, but:
+        perturbation_strength = np.pi / 4
+        perturb_proportion = 0.1
+        n_pose = bone_poses.shape[0]
+        n_perturb = int(n_pose * perturb_proportion)
+        pose_adj_idx = np.random.permutation(np.arange(n_pose))[:n_perturb]
+        axis_angle_adj = np.random.rand(n_perturb, 24, 3) * perturbation_strength
+        bone_poses[pose_adj_idx] += axis_angle_adj
+        ext_scale = 1
+
+        # This is local-to-world matrix, and we need world-to-local
+        # Note: the pose has pelvis centered at (0, 0, 0), so it's offseted from
+        # kp3d with a translation.
+        skts, l2ws = skt_from_smpl(bone_poses, scale=ext_scale, pelvis_loc=pelvis)
+        kp = l2ws[:, :, :3, -1]
 
         # to update
         # 1. kp3d, 2. skts, 3. bones

@@ -346,6 +346,8 @@ class ANeRF(nn.Module):
                 N_unique=network_inputs['N_unique'],
             )
 
+
+
         raw, encoded = self.evaluate_pts(network_inputs, coarse=True)
 
         if raw is None:

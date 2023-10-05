@@ -326,7 +326,6 @@ def get_noisy_bones(bones, noise_degree):
     mask = (np.random.random(bones.shape) > 0.5).astype(np.float32)
     noise = np.random.normal(0, noise_scale, bones.shape) * mask
     noisy_bones = bones + noise
-    print(np.abs(noise).max())
     return noisy_bones
 
 def perturb_poses(bone_poses, kp_3d, ext_scale, noise_degree=0.1,
