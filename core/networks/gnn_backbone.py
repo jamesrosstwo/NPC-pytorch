@@ -1,9 +1,6 @@
-import h5py
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-import numpy as np
 from core.networks.misc import (
     ParallelLinear,
     factorize_grid_sample,
@@ -16,10 +13,8 @@ from core.utils.skeleton_utils import *
 from core.positional_enc import PositionalEncoding
 from copy import deepcopy
 from einops import rearrange
-from core.networks.embedding import Optcodes
 
-from typing import Optional, Mapping, List, Union, Callable, Any
-from omegaconf import DictConfig
+from typing import Optional, List, Union, Callable
 
 
 '''

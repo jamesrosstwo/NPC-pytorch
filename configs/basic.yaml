@@ -15,8 +15,8 @@ N_imporantce: 32
 
 # logging
 i_print: 100
-i_save: 10000
-i_testset: 10000
+i_save: 300
+i_testset: 10000000
 render_factor: 1 #2 # factor to down size the rendered image during testing
 
 trainer:

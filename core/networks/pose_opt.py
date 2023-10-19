@@ -6,10 +6,12 @@ import numpy as np
 from core.utils.skeleton_utils import (
     Skeleton,
     SMPLSkeleton,
-    calculate_kinematic, skt_from_smpl,
+    calculate_kinematic, skt_from_smpl, axisang_to_rot, rot6d_to_rotmat, rot_to_axisang, get_smpl_l2ws,
+    get_kp_bounding_cylinder,
 )
 from typing import Optional, Dict, Any
 from einops import rearrange
+
 
 class PoseOpt(nn.Module):
     """
@@ -17,18 +19,18 @@ class PoseOpt(nn.Module):
     """
 
     def __init__(
-        self,
-        rest_pose: torch.Tensor,
-        kp3d: np.ndarray,
-        bones: np.ndarray, # FIXME: shouldn't call it bones anymore
-        skel_type: Skeleton,
-        emb_dim: int = 16, # unique-identifier for the per-pose code
-        depth: int = 4,
-        width: int = 128,
-        residual_scale: float = 0.1, # scale the output
-        rot_6d: bool = False,
-        n_embs: Optional[int] = None,
-        **kwargs,
+            self,
+            rest_pose: torch.Tensor,
+            kp3d: np.ndarray,
+            bones: np.ndarray,  # FIXME: shouldn't call it bones anymore
+            skel_type: Skeleton,
+            emb_dim: int = 16,  # unique-identifier for the per-pose code
+            depth: int = 4,
+            width: int = 128,
+            residual_scale: float = 0.1,  # scale the output
+            rot_6d: bool = False,
+            n_embs: Optional[int] = None,
+            **kwargs,
     ):
         super().__init__()
         assert skel_type == SMPLSkeleton, 'Only SMPLSkeleton is supported for now'
@@ -36,6 +38,7 @@ class PoseOpt(nn.Module):
         self.skel_type = skel_type
         self.n_embs = n_embs if n_embs is not None else len(kp3d)
         self.residual_scale = residual_scale
+        self.perturb_strength = np.pi
 
         rvecs = torch.tensor(bones)
         # NOTE: this is different from original A-NeRF implementation, but should 
@@ -59,19 +62,19 @@ class PoseOpt(nn.Module):
         self.refine_net = nn.Sequential(*net)
 
     def forward(
-        self,
-        network_inputs: Dict[str, Any],
-        kp3d: torch.Tensor,
-        bones: torch.Tensor, # FIXME: rvec
-        kp_idxs: torch.LongTensor,
-        N_unique: int = 1,
-        unroll: bool = True,
+            self,
+            network_inputs: Dict[str, Any],
+            kp3d: torch.Tensor,
+            bones: torch.Tensor,  # FIXME: rvec
+            kp_idxs: torch.LongTensor,
+            N_unique: int = 1,
+            unroll: bool = True,
     ) -> Dict[str, Any]:
         """
         Parameters
         ----------
         kp3d: torch.Tensor (B, J, 3) -- joint locations
-        bonees: torch.Tensor (B, J, 3 or 6) -- rotation vector for each joint/bone
+        bones: torch.Tensor (B, J, 3 or 6) -- rotation vector for each joint/bone
         kp_idxs: torch.LongTensor -- index of the poses 
         unroll: bool -- unroll the for loop for kinematic calculation, this gives faster forward pass
         """
@@ -87,7 +90,8 @@ class PoseOpt(nn.Module):
 
         embs = self.pose_embs(kp_unique)
         pelvis = self.pelvis[kp_unique].clone()
-        assert torch.allclose(pelvis, kp3d_unique[:, self.skel_type.root_id], atol=1e-5), 'Pelvis should be the same as root joint'
+        assert torch.allclose(pelvis, kp3d_unique[:, self.skel_type.root_id],
+                              atol=1e-5), 'Pelvis should be the same as root joint'
 
         x = torch.cat([rvecs, embs], dim=-1)
         residual = self.refine_net(x) * self.residual_scale
@@ -104,30 +108,8 @@ class PoseOpt(nn.Module):
             unroll_kinematic_chain=unroll,
         )
 
-
-        bone_poses = copy.deepcopy(bones)
-        # Here, we'll need to perturb the bone poses. Don't need to perturb root rotation,
-        # as the person should still always face -y
-        # kp3d will need to be adjusted as well, which can be done by just passing in the pelvis location of kp3d instead.
-        # YOu can then re-extract kp3d using l2ws's translation portion
-        # double check shape, but:
-        perturbation_strength = np.pi / 4
-        perturb_proportion = 0.1
-        n_pose = bone_poses.shape[0]
-        n_perturb = int(n_pose * perturb_proportion)
-        pose_adj_idx = np.random.permutation(np.arange(n_pose))[:n_perturb]
-        axis_angle_adj = np.random.rand(n_perturb, 24, 3) * perturbation_strength
-        bone_poses[pose_adj_idx] += axis_angle_adj
-        ext_scale = 1
-
-        # This is local-to-world matrix, and we need world-to-local
-        # Note: the pose has pelvis centered at (0, 0, 0), so it's offseted from
-        # kp3d with a translation.
-        skts, l2ws = skt_from_smpl(bone_poses, scale=ext_scale, pelvis_loc=pelvis)
-        kp = l2ws[:, :, :3, -1]
-
         # to update
-        # 1. kp3d, 2. skts, 3. bones
+        # 1. kp3d, 2. skts, 3. bone_poses
         # -> expand the shape
         kp = rearrange(kp[:, None].expand(-1, skip, -1, -1), 'i s j d -> (i s) j d')
         skts = rearrange(skts[:, None].expand(-1, skip, -1, -1, -1), 'i s j k d -> (i s) j k d')
@@ -135,7 +117,7 @@ class PoseOpt(nn.Module):
         network_inputs.update(
             kp3d=kp,
             skts=skts,
-            bones=rvecs, # FIXIT: nameing
+            bones=rvecs,  # FIXIT: nameing
         )
         return network_inputs
 
@@ -169,11 +151,10 @@ class PoseOpt(nn.Module):
             'bones': rvecs,
         }
 
+
 # TODO: fixing legacy code
 # ----- belows are all legacy code -----
 def create_popt(args, data_attrs, ckpt=None, device=None):
-
-
     # get attributes from dict
     skel_type = data_attrs['skel_type']
     rest_pose = data_attrs['rest_pose'].reshape(-1, len(skel_type.joint_names), 3)
@@ -213,7 +194,7 @@ def create_popt(args, data_attrs, ckpt=None, device=None):
         pose_ckpt = torch.load(args.init_poseopt) if args.init_poseopt is not None else ckpt
         popt_layer.load_state_dict(pose_ckpt["poseopt_layer_state_dict"])
         print("WARNING: pose-opt statedict logging is temporarily disabled for exp purpose!")
-        #pose_optimizer.load_state_dict(pose_ckpt["pose_optimizer_state_dict"])
+        # pose_optimizer.load_state_dict(pose_ckpt["pose_optimizer_state_dict"])
 
         if "poseopt_anchors" in pose_ckpt:
             anchor_kps = pose_ckpt["poseopt_anchors"]["kps"]
@@ -235,12 +216,13 @@ def create_popt(args, data_attrs, ckpt=None, device=None):
         print("update cache for faster forward")
         popt_layer.update_cache()
 
-    pose_optimizer.zero_grad() # to remove gradients from ckpt
+    pose_optimizer.zero_grad()  # to remove gradients from ckpt
     popt_kwargs = {'popt_anchors': popt_anchors,
                    'popt_layer': popt_layer,
                    'skel_type': skel_type}
 
     return pose_optimizer, popt_kwargs
+
 
 def mat_to_hom(mat):
     """
@@ -252,6 +234,7 @@ def mat_to_hom(mat):
         last_row = last_row.expand(mat.size(0), 1, 4)
     return torch.cat([mat, last_row], dim=-2)
 
+
 def load_bones_from_state_dict(state_dict, device='cpu'):
     bones = state_dict['poseopt_layer_state_dict']['bones']
     if bones.shape[-1] == 6:
@@ -260,6 +243,7 @@ def load_bones_from_state_dict(state_dict, device='cpu'):
         rots = rot6d_to_rotmat(bones)
         bones = rot_to_axisang(rots).view(N, N_J, -1)
     return bones.to(device)
+
 
 def load_poseopt_from_state_dict(state_dict):
     '''
@@ -285,7 +269,7 @@ def load_poseopt_from_state_dict(state_dict):
     dummy_bone = torch.zeros(N, N_J, 3)
 
     poseopt = PoseOptLayer(dummy_kp, dummy_bone, dummy_kp[0:1],
-                           use_rot6d= N_D==6, kp_map=kp_map, kp_uidxs=kp_uidxs)
+                           use_rot6d=N_D == 6, kp_map=kp_map, kp_uidxs=kp_uidxs)
     poseopt.load_state_dict(state_dict['poseopt_layer_state_dict'])
     return poseopt
 
@@ -303,15 +287,15 @@ def pose_ckpt_to_pose_data(path=None, popt_sd=None, ext_scale=0.001, legacy=Fals
 
     if legacy:
         pelvis[..., 1:] *= -1
-        rest_pose = np.concatenate([ rest_pose[..., :1],
+        rest_pose = np.concatenate([rest_pose[..., :1],
                                     -rest_pose[..., 2:3],
-                                     rest_pose[..., 1:2],], axis=-1)
-        bones = np.concatenate([ bones[..., :1],
+                                    rest_pose[..., 1:2], ], axis=-1)
+        bones = np.concatenate([bones[..., :1],
                                 -bones[..., 2:3],
-                                 bones[..., 1:2],], axis=-1)
+                                bones[..., 1:2], ], axis=-1)
         root_rot = axisang_to_rot(torch.tensor(bones[..., :1, :].reshape(-1, 3)))
         rot_on_root = torch.tensor([[1., 0., 0.],
-                                    [0., 0.,-1.],
+                                    [0., 0., -1.],
                                     [0., 1., 0.]]).float()
         root_rot = rot_to_axisang(rot_on_root[None, :3, :3] @ root_rot).reshape(-1, 3).cpu().numpy()
         bones[..., 0, :] = root_rot
@@ -327,4 +311,3 @@ def pose_ckpt_to_pose_data(path=None, popt_sd=None, ext_scale=0.001, legacy=Fals
     cyls = get_kp_bounding_cylinder(kp3d, ext_scale=ext_scale, skel_type=skel_type,
                                     extend_mm=250, head='-y').astype(np.float32)
     return kp3d, bones, skts, cyls, rest_pose, pelvis
-

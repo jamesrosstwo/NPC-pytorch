@@ -1,6 +1,0 @@
-- basedir=logs
-- expname=danbo_S5
-- dataset=h36m_zju
-- dataset.subject=S5
-- num_workers=16
-- iters=10000

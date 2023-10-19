@@ -17,6 +17,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.data._utils.collate import default_collate
 
 # TODO: these functions should actually come from elsewhere
+from core.utils.visualization import plot_skeleton3d
 from train import (
     build_model,
     find_ckpts,
@@ -241,7 +242,8 @@ class BaseRenderDataset(Dataset):
             self.init_dataset()
         idx = self.idxs[idx]
         img = self.dataset['imgs'][idx].reshape(*self.HW, 3)
-        bone, root_loc = self.get_pose_data(idx) 
+        bone, root_loc = self.get_pose_data(idx)
+
         c2w, K, focal, center, cam_idx = self.get_camera_data(idx)
         bg = self.get_bg(idx)
 
@@ -266,6 +268,22 @@ class BaseRenderDataset(Dataset):
         if self.rotate_z_deg != 0.:
             rotate_z_mat = rotate_z(math.radians(self.rotate_z_deg))
             c2w = rotate_z_mat @ c2w
+
+        skts, l2ws = skt_from_smpl(bone[np.newaxis, :], scale=0.2, pelvis_loc=root_loc[np.newaxis, :])
+        kp_3d = l2ws[:, :, :3, -1]
+        before_fig = plot_skeleton3d(kp_3d[0])
+        before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_before.html")
+
+        samples = np.random.normal(0, 1, size=bone.shape)
+        var = np.ones(bone.shape) * np.pi / 48
+        mean = np.ones(bone.shape) * np.pi / 24
+        perturbations = mean + np.multiply(samples, var)
+        bone[17, :] += perturbations[17, :]
+
+        skts, l2ws = skt_from_smpl(bone[np.newaxis, :], scale=0.2, pelvis_loc=root_loc[np.newaxis, :])
+        kp_3d = l2ws[:, :, :3, -1]
+        before_fig = plot_skeleton3d(kp_3d[0])
+        before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_after.html")
 
         return {
             'img': img,
