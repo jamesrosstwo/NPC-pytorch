@@ -4,6 +4,7 @@ import numpy as np
 
 from core.datasets import BaseH5Dataset
 from core.utils.skeleton_utils import *
+from core.utils.visualization import plot_skeleton3d
 
 
 class ZJUMocapDataset(BaseH5Dataset):
@@ -284,4 +285,45 @@ class ZJUH36MDataset(ZJUMocapDataset):
             'bones': bones,
         }
         return render_data
-    
+
+class NoisyZJUH36MDataset(ZJUH36MDataset):
+    def get_pose_data(self, *args, **kwargs):
+        retval = super().get_pose_data(*args, **kwargs)
+        kp3d, bone, skts = retval["kp3d"], retval["bones"], retval["skts"]
+
+        rest_pose = torch.tensor(np.array(self.dataset['rest_pose']))
+
+        var = np.ones(bone.shape) * np.pi * 2
+        mean = np.zeros(bone.shape)
+
+        perturb_proportion = 0.1
+        n_pose = bone.shape[0]
+        n_perturb = int(n_pose * perturb_proportion)
+        pose_adj_idx = np.random.permutation(np.arange(n_pose))[:n_perturb]
+        samples = np.random.normal(0, 1, size=(n_perturb, 24, 3))
+        perturbations = mean[pose_adj_idx] + np.multiply(samples, var[pose_adj_idx])
+
+
+        # TODO: hacky
+        kp3d, skts, = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone))]
+        # before_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]])
+        # before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_before.html")
+
+        bone[pose_adj_idx, 17, :] += perturbations[:, 17, :]
+
+        kp3d, skts, = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone))]
+        # before_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]])
+        # before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_after.html")
+
+        cyl = get_kp_bounding_cylinder(kp3d, head="-y")
+
+        retval.update(
+            {
+                "kp3d": None,
+                "bones": bone,
+                "skts": skts,
+                "cyls": cyl
+            }
+        )
+        return retval
+

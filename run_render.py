@@ -269,21 +269,6 @@ class BaseRenderDataset(Dataset):
             rotate_z_mat = rotate_z(math.radians(self.rotate_z_deg))
             c2w = rotate_z_mat @ c2w
 
-        skts, l2ws = skt_from_smpl(bone[np.newaxis, :], scale=0.2, pelvis_loc=root_loc[np.newaxis, :])
-        kp_3d = l2ws[:, :, :3, -1]
-        before_fig = plot_skeleton3d(kp_3d[0])
-        before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_before.html")
-
-        samples = np.random.normal(0, 1, size=bone.shape)
-        var = np.ones(bone.shape) * np.pi / 48
-        mean = np.ones(bone.shape) * np.pi / 24
-        perturbations = mean + np.multiply(samples, var)
-        bone[17, :] += perturbations[17, :]
-
-        skts, l2ws = skt_from_smpl(bone[np.newaxis, :], scale=0.2, pelvis_loc=root_loc[np.newaxis, :])
-        kp_3d = l2ws[:, :, :3, -1]
-        before_fig = plot_skeleton3d(kp_3d[0])
-        before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_after.html")
 
         return {
             'img': img,
