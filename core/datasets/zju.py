@@ -293,7 +293,7 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
 
         rest_pose = torch.tensor(np.array(self.dataset['rest_pose']))
 
-        var = np.ones(bone.shape) * np.pi * 2
+        var = np.ones(bone.shape) * np.pi / 24
         mean = np.zeros(bone.shape)
 
         perturb_proportion = 0.1
@@ -305,11 +305,26 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
 
 
         # TODO: hacky
-        kp3d, skts, = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone))]
         # before_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]])
         # before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_before.html")
 
+
+
+
+        # last_fig=None
+        # for i in range(25):
+        #     samples = np.random.normal(0, 1, size=(n_perturb, 24, 3))
+        #     perturbations = mean[pose_adj_idx] + np.multiply(samples, var[pose_adj_idx])
+        #     perturbed = np.copy(bone)
+        #     perturbed[pose_adj_idx, 17, :] += perturbations[:, 17, :]
+        #     kp3d, skts, = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(perturbed))]
+        #     last_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]], fig=last_fig)
+        # last_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/multi_pose_perturb.html")
+        #
+
+
         bone[pose_adj_idx, 17, :] += perturbations[:, 17, :]
+
 
         kp3d, skts, = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone))]
         # before_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]])
@@ -319,7 +334,7 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
 
         retval.update(
             {
-                "kp3d": None,
+                "kp3d": kp3d,
                 "bones": bone,
                 "skts": skts,
                 "cyls": cyl

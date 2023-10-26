@@ -18,22 +18,26 @@ class PoseSampler(nn.Module):
             self,
             rest_pose: torch.Tensor,
             skel_type: Skeleton,
-            # n_index: int
+            n_framecodes: int
     ):
         super().__init__()
         assert skel_type == SMPLSkeleton, 'Only SMPLSkeleton is supported for now'
         self.skel_type = skel_type
         self.rest_pose = rest_pose
         self.perturb_strength = 0
-        n_index = 84
+        self.n_framecodes = n_framecodes
         # cov_tensor = torch.stack([torch.eye(self.rest_pose.shape[1]) for _ in range(self.rest_pose.shape[0])])
-        self.variance_tensor = torch.ones((n_index, *self.rest_pose.shape)) * np.pi / 48
-        self.means_tensor = torch.zeros((n_index, *self.rest_pose.shape))
+        self.variance_tensor = torch.ones((self.n_framecodes, *self.rest_pose.shape)) * np.pi / 24
+        self.means_tensor = torch.zeros((self.n_framecodes, *self.rest_pose.shape))
         self.variances = nn.Parameter(data=self.variance_tensor, requires_grad=True).to(self.rest_pose.device)
         self.means = nn.Parameter(data=self.means_tensor, requires_grad=True).to(self.rest_pose.device)
         # self.register_buffer('rest_pose', rest_pose, persistent=False)
 
-    def forward(self, kp3d: torch.Tensor, bones: torch.Tensor, unroll: bool = True) -> Dict[str, Any]:
+    def forward(self,
+                kp3d: torch.Tensor,
+                bones: torch.Tensor,
+                kp_idxs: torch.LongTensor,
+                unroll: bool = True) -> Dict[str, Any]:
         """
         Parameters
         ----------
@@ -44,8 +48,8 @@ class PoseSampler(nn.Module):
         """
         bone_poses = torch.clone(bones)
         samples = torch.normal(0, 1, size=bone_poses.shape).to(bones.device)
-        means = self.means.unsqueeze(0)
-        vars = self.variance_tensor.unsqueeze(0)
+        means = self.means[kp_idxs]
+        vars = self.variance_tensor[kp_idxs]
         perturbations = means + torch.mul(samples, vars)
         bone_poses[:, 17, :] += perturbations[:, 17, :]
         pelvis = torch.tensor(kp3d[:, self.skel_type.root_id])
