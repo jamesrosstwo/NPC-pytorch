@@ -8,7 +8,6 @@ from core.utils.visualization import plot_skeleton3d
 
 
 class ZJUMocapDataset(BaseH5Dataset):
-
     N_render = 15
     render_skip = 63
 
@@ -40,7 +39,6 @@ class ZJUMocapDataset(BaseH5Dataset):
         if self.load_cal:
             cal_c2ws = np.load(os.path.join(self.basedir, f'{self.subject}_cal.npy'))
             self.c2ws = cal_c2ws.copy()
-            import pdb; pdb.set_trace()
             print
 
     def get_meta(self):
@@ -120,14 +118,14 @@ class ZJUMocapDataset(BaseH5Dataset):
                 img = img * fg + (1. - fg) * bg
 
         return img, fg, bg, img_not_masked, bg_orig, full_img, full_fg
-    
+
     def __getitem__(self, *args, **kwargs):
         ret = super().__getitem__(*args, **kwargs)
         # TODO: fix this
-        real_cam_idxs = ret['cam_idxs'] %4 # % 23
+        real_cam_idxs = ret['cam_idxs'] % 4  # % 23
         ret['real_cam_idx'] = real_cam_idxs
         return ret
-    
+
     def get_render_data(self):
         zju_eval_frames = {
             387: np.arange(418)[:19],
@@ -177,14 +175,14 @@ class ZJUMocapDataset(BaseH5Dataset):
             c2ws = cal_c2ws[c_idxs]
 
         render_data = {
-            #'imgs': render_imgs,
+            # 'imgs': render_imgs,
             'imgs': render_imgs * render_fgs,
             'fgs': render_fgs,
             'bgs': render_bgs,
             'bg_idxs': render_bg_idxs,
             'bg_idxs_len': len(self.bgs),
             # camera data
-            'cam_idxs': c_idxs * 0 - 1, # set to -1 to use avg framecode
+            'cam_idxs': c_idxs * 0 - 1,  # set to -1 to use avg framecode
             'cam_idxs_len': len(self.c2ws),
             'c2ws': c2ws,
             'hwf': hwf,
@@ -200,7 +198,6 @@ class ZJUMocapDataset(BaseH5Dataset):
 
 
 class ZJUH36MDataset(ZJUMocapDataset):
-
     N_render = 30
     render_skip = 1
 
@@ -219,13 +216,13 @@ class ZJUH36MDataset(ZJUMocapDataset):
         self.cam_idxs = dataset['img_pose_indices'][:]
 
         dataset.close()
-    
+
     def init_temporal_validity(self):
         temp_val = np.ones((len(self.kp3d),)).astype(np.float32)
         temp_val[0] = 0
         temp_val[-1] = 0
         return temp_val
-    
+
     def get_render_data(self):
 
         h36m_zju_eval_frames = {
@@ -272,7 +269,7 @@ class ZJUH36MDataset(ZJUMocapDataset):
             'bg_idxs': render_bg_idxs,
             'bg_idxs_len': len(self.bgs),
             # camera data
-            'cam_idxs': c_idxs * 0 - 1, # set to -1 to use avg framecode
+            'cam_idxs': c_idxs * 0 - 1,  # set to -1 to use avg framecode
             'cam_idxs_len': len(self.c2ws),
             'c2ws': self.c2ws[c_idxs],
             'hwf': hwf,
@@ -286,30 +283,13 @@ class ZJUH36MDataset(ZJUMocapDataset):
         }
         return render_data
 
+
 class NoisyZJUH36MDataset(ZJUH36MDataset):
-    def get_pose_data(self, *args, **kwargs):
-        retval = super().get_pose_data(*args, **kwargs)
-        kp3d, bone, skts = retval["kp3d"], retval["bones"], retval["skts"]
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-        rest_pose = torch.tensor(np.array(self.dataset['rest_pose']))
-
-        var = np.ones(bone.shape) * np.pi / 24
-        mean = np.zeros(bone.shape)
-
-        perturb_proportion = 0.1
-        n_pose = bone.shape[0]
-        n_perturb = int(n_pose * perturb_proportion)
-        pose_adj_idx = np.random.permutation(np.arange(n_pose))[:n_perturb]
-        samples = np.random.normal(0, 1, size=(n_perturb, 24, 3))
-        perturbations = mean[pose_adj_idx] + np.multiply(samples, var[pose_adj_idx])
-
-
-        # TODO: hacky
         # before_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]])
         # before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_before.html")
-
-
-
 
         # last_fig=None
         # for i in range(25):
@@ -320,20 +300,40 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
         #     kp3d, skts, = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(perturbed))]
         #     last_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]], fig=last_fig)
         # last_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/multi_pose_perturb.html")
-        #
+        np.random.seed(12345)
+        perturb_var = np.ones((self.data_len, 24, 3)) * np.pi / 24
+        perturb_mean = np.zeros((self.data_len, 24, 3))
+        perturb_proportion = 0.1
+        n_perturb = int(self.data_len * perturb_proportion)
+        pose_adj_idx = np.random.permutation(np.arange(self.data_len))[:n_perturb]
+        samples = np.random.normal(0, 1, size=(self.data_len, 24, 3))
+        self.frame_perturbations = perturb_mean
+        self.frame_perturbations[pose_adj_idx] += np.multiply(samples, perturb_var)[pose_adj_idx]
+        print("asd")
 
-
-        bone[pose_adj_idx, 17, :] += perturbations[:, 17, :]
-
-
-        kp3d, skts, = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone))]
         # before_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]])
         # before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_after.html")
+
+    def get_pose_data(self, idx, q_idx, N_samples):
+        retval = super().get_pose_data(idx, q_idx, N_samples)
+        real_idx, kp_idx = self.get_kp_idx(idx, q_idx)
+        kp3d, bone, skts = retval["kp3d"], retval["bones"], retval["skts"]
+        base_kp3d = kp3d
+        base_bone = bone
+
+        rest_pose = torch.tensor(np.array(self.dataset['rest_pose']))
+        bone[:, 17, :] += self.frame_perturbations[kp_idx, 17, :]
+        rlocs = torch.tensor(kp3d[:, 0, :])
+        # TODO: hacky
+        kp3d, skt = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone), root_locs=rlocs)]
+
 
         cyl = get_kp_bounding_cylinder(kp3d, head="-y")
 
         retval.update(
             {
+                "base_kp3d": base_kp3d,
+                "base_bone": base_bone,
                 "kp3d": kp3d,
                 "bones": bone,
                 "skts": skts,
@@ -341,4 +341,3 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
             }
         )
         return retval
-

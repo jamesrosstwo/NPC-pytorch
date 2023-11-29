@@ -347,12 +347,12 @@ class ANeRF(nn.Module):
         # Step 2. model evaluation
         # TODO: do we need a get_nerf_inputs function?
         network_inputs = self.get_network_inputs(batch, pts, z_vals)
-        if self.pose_sampler is not None:
-            network_inputs.update(self.pose_sampler(
-                kp3d=network_inputs["kp3d"],
-                bones=network_inputs["bones"],
-                kp_idxs=network_inputs['real_kp_idx']
-            ))
+        # if self.pose_sampler is not None:
+        #     network_inputs.update(self.pose_sampler(
+        #         kp3d=network_inputs["kp3d"],
+        #         bones=network_inputs["bones"],
+        #         kp_idxs=network_inputs['real_kp_idx']
+        #     ))
 
         if pose_opt and self.pose_opt is not None:
             # TODO: is this a good way?

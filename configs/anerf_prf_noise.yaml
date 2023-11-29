@@ -33,10 +33,10 @@ model:
     N_importance: 32
   
   pose_opt:
-    _target_: core.networks.pose_opt.PoseOpt
+    _target_: core.networks.pose_opt_sample.PoseOptSample
 
-  pose_sampler:
-    _target_: core.networks.pose_sampler.PoseSampler
+#  pose_sampler:
+#    _target_: core.networks.pose_sampler.PoseSampler
   
 trainer:
   pose_opt: true
