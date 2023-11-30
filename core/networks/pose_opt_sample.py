@@ -20,6 +20,7 @@ class PoseOptSample(nn.Module):
 
     def __init__(
             self,
+            use_variance: bool,
             rest_pose: torch.Tensor,
             kp3d: np.ndarray,
             bones: np.ndarray,  # FIXME: shouldn't call it bones anymore

@@ -34,13 +34,16 @@ model:
   
   pose_opt:
     _target_: core.networks.pose_opt_sample.PoseOptSample
+    use_variance: false
 
 #  pose_sampler:
 #    _target_: core.networks.pose_sampler.PoseSampler
   
 trainer:
   pose_opt: true
-  
+  gradient_capture:
+    _target_: core.gradient_capture.GradientCapture
+
 losses:
   NeRFRGBLoss:
     fine: 1.0

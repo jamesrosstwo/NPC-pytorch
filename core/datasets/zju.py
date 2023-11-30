@@ -161,7 +161,7 @@ class ZJUMocapDataset(BaseH5Dataset):
         skts = np.array(skts)
         bones = np.array(bones)
 
-        c_idxs = dataset['img_pose_indices'][eval_idxs]
+        c_idxs = dataset['img_pose_ indices'][eval_idxs]
 
         H = np.repeat([H], len(c_idxs), 0)
         W = np.repeat([W], len(c_idxs), 0)
