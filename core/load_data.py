@@ -28,7 +28,7 @@ def build_dataloader(config: DictConfig):
 
     # readout args
     iters = config.get('iters', 300000)
-    num_workers = config.get('num_workers', 16)
+    num_workers = config.get('num_workers', 1)
     N_sample_images = config.get('N_sample_images', 16)
     N_rays = config.get('N_rays', 3072)
     N_samples = N_rays // N_sample_images

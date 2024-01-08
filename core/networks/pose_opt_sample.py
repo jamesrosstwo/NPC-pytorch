@@ -40,6 +40,7 @@ class PoseOptSample(nn.Module):
         self.n_embs = n_embs if n_embs is not None else len(kp3d)
         self.residual_scale = residual_scale
         self.perturb_strength = np.pi
+        self._use_variance = use_variance
 
         rvecs = torch.tensor(bones)
         # NOTE: this is different from original A-NeRF implementation, but should 
@@ -65,6 +66,8 @@ class PoseOptSample(nn.Module):
 
     def _sample_residuals(self, residuals, variances):
         assert residuals.shape == variances.shape
+        if not self._use_variance:
+            return residuals
         samples = torch.normal(0, 1, size=residuals.shape).to(residuals.device)
         return residuals + torch.mul(samples, variances)
 
