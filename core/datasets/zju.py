@@ -309,7 +309,6 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
         samples = np.random.normal(0, 1, size=(self.data_len, 24, 3))
         self.frame_perturbations = perturb_mean
         self.frame_perturbations[pose_adj_idx] += np.multiply(samples, perturb_var)[pose_adj_idx]
-        print("asd")
 
         # before_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]])
         # before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_after.html")
@@ -322,7 +321,7 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
         base_bone = bone
 
         rest_pose = torch.tensor(np.array(self.dataset['rest_pose']))
-        bone[:, 17, :] += self.frame_perturbations[kp_idx, 17, :]
+        bone += self.frame_perturbations
         rlocs = torch.tensor(kp3d[:, 0, :])
         # TODO: hacky
         kp3d, skt = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone), root_locs=rlocs)]
