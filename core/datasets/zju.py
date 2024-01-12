@@ -321,7 +321,7 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
         base_bone = bone
 
         rest_pose = torch.tensor(np.array(self.dataset['rest_pose']))
-        bone += self.frame_perturbations
+        bone += self.frame_perturbations[real_idx, :, :]
         rlocs = torch.tensor(kp3d[:, 0, :])
         # TODO: hacky
         kp3d, skt = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone), root_locs=rlocs)]
