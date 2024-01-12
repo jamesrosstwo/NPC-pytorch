@@ -41,6 +41,7 @@ class PoseOptSample(nn.Module):
         self.residual_scale = residual_scale
         self.perturb_strength = np.pi
         self._use_variance = use_variance
+        self.current_joint_norms = torch.zeros(384)
 
         rvecs = torch.tensor(bones)
         # NOTE: this is different from original A-NeRF implementation, but should 
@@ -66,8 +67,6 @@ class PoseOptSample(nn.Module):
 
     def _sample_residuals(self, residuals, variances):
         assert residuals.shape == variances.shape
-        if not self._use_variance:
-            return residuals
         samples = torch.normal(0, 1, size=residuals.shape).to(residuals.device)
         return residuals + torch.mul(samples, variances)
 
@@ -79,16 +78,17 @@ class PoseOptSample(nn.Module):
             bones: torch.Tensor,  # FIXME: rvec
             kp_idxs: torch.LongTensor,
             N_unique: int = 1,
-            unroll: bool = True,
+            unroll: bool = True
     ) -> Dict[str, Any]:
         """
         Parameters
         ----------
         kp3d: torch.Tensor (B, J, 3) -- joint locations
         bones: torch.Tensor (B, J, 3 or 6) -- rotation vector for each joint/bone
-        kp_idxs: torch.LongTensor -- index of the poses 
+        kp_idxs: torch.LongTensor -- index of the poses
         unroll: bool -- unroll the for loop for kinematic calculation, this gives faster forward pass
         """
+
         N_samples = len(kp3d)
         skip = N_samples // N_unique
         N, J, _ = bones.shape
@@ -107,12 +107,14 @@ class PoseOptSample(nn.Module):
         x = torch.cat([rvecs, embs], dim=-1)
         ref_out = self.refine_net(x) * self.residual_scale
         residual, variance = torch.split(ref_out, ref_out.shape[-1] // 2, dim=-1)
-        residual = self._sample_residuals(residual, variance)
+        if self._use_variance:
+            residual = self._sample_residuals(residual, variance)
         residual_rvecs, residual_pelvis = torch.split(residual, [rvecs.shape[-1], 3], dim=-1)
         rvecs = rearrange(rvecs + residual_rvecs, 'b (j d) -> b j d', j=J)
         pelvis = pelvis + residual_pelvis
         rest_pose = self.rest_pose.clone()
-
+        joint_residuals = rearrange(residual_rvecs, 'b (j d) -> b j d', j=J)
+        self.current_joint_norms = torch.norm(joint_residuals, dim=2).flatten().detach().cpu().numpy()
         kp, skts = calculate_kinematic(
             rest_pose[None],
             rvecs,

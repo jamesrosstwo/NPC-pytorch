@@ -145,8 +145,15 @@ def train(config: DictConfig):
             for k, v in training_stats.items():
                 if k in to_print:
                     output_str = f'{output_str}, {k}: {v:.6f}'
-                # write to tensorboard
-                writer.add_scalar(f'Stats/{k}', v, i)
+                if k == 'joint_norms':
+                    try:
+                        writer.add_histogram('Joint Norms', v, i)
+                    except TypeError:
+                        # https://github.com/pytorch/pytorch/issues/91516
+                        print(v)
+                else:
+                    # write to tensorboard
+                    writer.add_scalar(f'Stats/{k}', v, i)
             output_str = f'{output_str}, peak_mem: {mem:.6f}'
             tqdm.write(output_str)
 

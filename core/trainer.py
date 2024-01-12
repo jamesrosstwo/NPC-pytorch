@@ -202,16 +202,23 @@ class Trainer(object):
             if len(self.model.device_ids) > 1:
                 device_cnt = len(self.model.device_ids)
 
+        stats = dict()
+
         # Step 1. model prediction
         batch = to_device(batch, 'cuda')
         batch['N_unique'] = self.full_config.N_sample_images // device_cnt
         batch['device_cnt'] = device_cnt
         batch['global_iter'] = global_iter
-        preds = self.model(batch, pose_opt=self.config.get('pose_opt', False))
+        pose_opt = self.config.get('pose_opt', False)
+        preds = self.model(batch, pose_opt=pose_opt)
+
+        if pose_opt:
+            stats["joint_norms"] = self.model.module.pose_opt.current_joint_norms
 
         # Step 2. compute loss
         # TODO: used to have pose-optimization here ..
-        loss, stats = self.compute_loss(batch, preds, global_iter=global_iter)
+        loss, new_stats = self.compute_loss(batch, preds, global_iter=global_iter)
+        stats.update(new_stats)
 
         # clean up after step
         loss.backward()

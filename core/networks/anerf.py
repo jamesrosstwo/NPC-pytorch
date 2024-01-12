@@ -17,7 +17,7 @@ from core.utils.skeleton_utils import (
 
 from einops import rearrange
 from core.networks.camcal import CamCal
-from typing import Optional, Callable, Mapping, Any, List, Union
+from typing import Optional, Callable, Mapping, Any, List, Union, Dict
 from omegaconf import DictConfig
 
 
@@ -332,7 +332,6 @@ class ANeRF(nn.Module):
             raise NotImplementedError(f'Unknown forward type {forward_type}')
 
     def forward_rays(self, batch: Mapping[str, Any], pose_opt: bool = False, **kwargs):
-
         if 'rays_o' not in batch and 'rays_d' not in batch:
             raise NotImplementedError(
                 'Rays are not provided as input. '
