@@ -1,10 +1,13 @@
 import os
+from collections import defaultdict
+from pathlib import Path
+
 import h5py
 import numpy as np
 
 from core.datasets import BaseH5Dataset
 from core.utils.skeleton_utils import *
-from core.utils.visualization import plot_skeleton3d
+from core.utils.visualization import plot_skeleton3d, draw_skeletons_3d
 
 
 class ZJUMocapDataset(BaseH5Dataset):
@@ -161,7 +164,7 @@ class ZJUMocapDataset(BaseH5Dataset):
         skts = np.array(skts)
         bones = np.array(bones)
 
-        c_idxs = dataset['img_pose_ indices'][eval_idxs]
+        c_idxs = dataset['img_pose_indices'][eval_idxs]
 
         H = np.repeat([H], len(c_idxs), 0)
         W = np.repeat([W], len(c_idxs), 0)
@@ -285,35 +288,45 @@ class ZJUH36MDataset(ZJUMocapDataset):
 
 
 class NoisyZJUH36MDataset(ZJUH36MDataset):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, cache_dir: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # before_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]])
-        # before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_before.html")
-
-        # last_fig=None
-        # for i in range(25):
-        #     samples = np.random.normal(0, 1, size=(n_perturb, 24, 3))
-        #     perturbations = mean[pose_adj_idx] + np.multiply(samples, var[pose_adj_idx])
-        #     perturbed = np.copy(bone)
-        #     perturbed[pose_adj_idx, 17, :] += perturbations[:, 17, :]
-        #     kp3d, skts, = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(perturbed))]
-        #     last_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]], fig=last_fig)
-        # last_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/multi_pose_perturb.html")
         np.random.seed(12345)
-        perturb_var = np.ones((self.data_len, 24, 3)) * np.pi / 24
+        perturb_var = np.ones((self.data_len, 24, 3)) * np.pi / 20
         perturb_mean = np.zeros((self.data_len, 24, 3))
-        perturb_proportion = 0.1
+        perturb_proportion = 0.4
         n_perturb = int(self.data_len * perturb_proportion)
         pose_adj_idx = np.random.permutation(np.arange(self.data_len))[:n_perturb]
         samples = np.random.normal(0, 1, size=(self.data_len, 24, 3))
         self.frame_perturbations = perturb_mean
         self.frame_perturbations[pose_adj_idx] += np.multiply(samples, perturb_var)[pose_adj_idx]
+        self._cache_dir = Path(cache_dir)
+        self._cache_dir.mkdir(exist_ok=True)
+        self._written_caches = defaultdict(bool)
 
-        # before_fig = plot_skeleton3d(kp3d[pose_adj_idx[0]])
-        # before_fig.write_html("/home/james/Desktop/Courses/449CPSC/NPC-pytorch/outputs/eval/vis/data_after.html")
+
+    def _write_cache_data(self, idx, retval):
+
+        real_idx = self.kp_idxs[idx]
+        flat_img = self.dataset["imgs"][real_idx]
+        W, H = self.dataset["img_shape"][1:3]
+        img = flat_img.reshape((W, H, 3))
+        plot_img = img[np.newaxis, :, :, :]
+        plot_base_skel = retval["base_bone"][:1]
+        perturbed_skel = retval["bones"][:1]
+        c2ws = self.dataset["c2ws"]
+
+        base_skel_img = draw_skeletons_3d(plot_img, plot_base_skel, c2ws, int(H), int(W), self.focals)
+        perturbed_img = draw_skeletons_3d(plot_img, perturbed_skel, c2ws, int(H), int(W), self.focals)
+        plt.imsave(str(self._cache_dir / (str(real_idx) + "_base.png")), base_skel_img[0])
+        plt.imsave(str(self._cache_dir / (str(real_idx) + "_perturbed.png")), perturbed_img[0])
+
+        self._written_caches[idx] = True
+
+
 
     def get_pose_data(self, idx, q_idx, N_samples):
+
         retval = super().get_pose_data(idx, q_idx, N_samples)
         real_idx, kp_idx = self.get_kp_idx(idx, q_idx)
         kp3d, bone, skts = retval["kp3d"], retval["bones"], retval["skts"]
@@ -321,7 +334,7 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
         base_bone = bone
 
         rest_pose = torch.tensor(np.array(self.dataset['rest_pose']))
-        bone += self.frame_perturbations[real_idx, :, :]
+        bone[:, 17, :] += self.frame_perturbations[real_idx, 17, :]
         rlocs = torch.tensor(kp3d[:, 0, :])
         # TODO: hacky
         kp3d, skt = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone), root_locs=rlocs)]
@@ -339,4 +352,7 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
                 "cyls": cyl
             }
         )
+
+        if not self._written_caches[idx]:
+            self._write_cache_data(idx, retval)
         return retval
