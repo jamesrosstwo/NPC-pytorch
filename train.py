@@ -9,6 +9,7 @@ from copy import deepcopy
 from tqdm import tqdm, trange
 from omegaconf import OmegaConf
 
+import tensorboard_patch
 from core.trainer import Trainer
 
 from hydra.utils import (
@@ -24,6 +25,9 @@ from omegaconf import DictConfig
 
 CONFIG_BASE = 'configs/'
 
+
+# https://github.com/pytorch/pytorch/issues/91516
+torch.utils.tensorboard.summary.make_histogram = tensorboard_patch.make_histogram
 
 def prepare_render_data(
     render_data: Mapping[str, Any], 
@@ -145,7 +149,7 @@ def train(config: DictConfig):
             for k, v in training_stats.items():
                 if k in to_print:
                     output_str = f'{output_str}, {k}: {v:.6f}'
-                if k == 'joint_norms':
+                elif k == 'joint_norms':
                     try:
                         writer.add_histogram('Joint Norms', v, i)
                     except TypeError:
