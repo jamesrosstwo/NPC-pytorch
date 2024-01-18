@@ -288,13 +288,12 @@ class ZJUH36MDataset(ZJUMocapDataset):
 
 
 class NoisyZJUH36MDataset(ZJUH36MDataset):
-    def __init__(self, cache_dir: str, *args, **kwargs):
+    def __init__(self, cache_dir: str, perturb_proportion=0.4, perturb_strength=np.pi / 24, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         np.random.seed(12345)
-        perturb_var = np.ones((self.data_len, 24, 3)) * np.pi / 20
+        perturb_var = np.ones((self.data_len, 24, 3)) * perturb_strength
         perturb_mean = np.zeros((self.data_len, 24, 3))
-        perturb_proportion = 0.4
         n_perturb = int(self.data_len * perturb_proportion)
         pose_adj_idx = np.random.permutation(np.arange(self.data_len))[:n_perturb]
         samples = np.random.normal(0, 1, size=(self.data_len, 24, 3))
@@ -304,9 +303,7 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
         self._cache_dir.mkdir(exist_ok=True)
         self._written_caches = defaultdict(bool)
 
-
     def _write_cache_data(self, idx, retval):
-
         real_idx = self.kp_idxs[idx]
         flat_img = self.dataset["imgs"][real_idx]
         W, H = self.dataset["img_shape"][1:3]
@@ -323,22 +320,18 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
 
         self._written_caches[idx] = True
 
-
-
     def get_pose_data(self, idx, q_idx, N_samples):
-
         retval = super().get_pose_data(idx, q_idx, N_samples)
         real_idx, kp_idx = self.get_kp_idx(idx, q_idx)
         kp3d, bone, skts = retval["kp3d"], retval["bones"], retval["skts"]
-        base_kp3d = kp3d
-        base_bone = bone
+        base_kp3d = np.copy(kp3d)
+        base_bone = np.copy(bone)
 
         rest_pose = torch.tensor(np.array(self.dataset['rest_pose']))
         bone[:, 17, :] += self.frame_perturbations[real_idx, 17, :]
         rlocs = torch.tensor(kp3d[:, 0, :])
         # TODO: hacky
         kp3d, skt = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone), root_locs=rlocs)]
-
 
         cyl = get_kp_bounding_cylinder(kp3d, head="-y")
 
