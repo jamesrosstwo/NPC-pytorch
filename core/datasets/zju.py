@@ -295,25 +295,27 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
         perturb_var = np.ones((self.data_len, 24, 3)) * perturb_strength
         perturb_mean = np.zeros((self.data_len, 24, 3))
         n_perturb = int(self.data_len * perturb_proportion)
-        pose_adj_idx = np.random.permutation(np.arange(self.data_len))[:n_perturb]
+        self._pose_adj_idx = np.random.permutation(np.arange(self.data_len))[:n_perturb]
         samples = np.random.normal(0, 1, size=(self.data_len, 24, 3))
         self.frame_perturbations = perturb_mean
-        self.frame_perturbations[pose_adj_idx] += np.multiply(samples, perturb_var)[pose_adj_idx]
+        self.frame_perturbations[self._pose_adj_idx] += np.multiply(samples, perturb_var)[self._pose_adj_idx]
         self._cache_dir = Path(cache_dir)
         self._cache_dir.mkdir(exist_ok=True)
         self._written_caches = defaultdict(bool)
 
-    def _write_cache_data(self, idx, retval):
+    def _write_cache_data(self, idx, cam_data, retval):
         flat_img = self.dataset["imgs"][idx]
         W, H = self.dataset["img_shape"][1:3]
         img = flat_img.reshape((W, H, 3))
         plot_img = img[np.newaxis, :, :, :]
         plot_base_skel = retval["base_kp3d"][:1]
         perturbed_skel = retval["kp3d"][:1]
-        c2ws = self.dataset["c2ws"]
+        c2w = cam_data[0][np.newaxis]
+        focal = cam_data[2][np.newaxis]
+        center = cam_data[3][np.newaxis]
 
-        base_skel_img = draw_skeletons_3d(plot_img, plot_base_skel, c2ws, int(H), int(W), self.focals)
-        perturbed_img = draw_skeletons_3d(plot_img, perturbed_skel, c2ws, int(H), int(W), self.focals)
+        base_skel_img = draw_skeletons_3d(plot_img, plot_base_skel, c2w, int(H), int(W), focal, centers=center)
+        perturbed_img = draw_skeletons_3d(plot_img, perturbed_skel, c2w, int(H), int(W), focal, centers=center)
         plt.imsave(str(self._cache_dir / (str(idx) + "_base.png")), base_skel_img[0])
         plt.imsave(str(self._cache_dir / (str(idx) + "_perturbed.png")), perturbed_img[0])
 
@@ -321,13 +323,12 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
 
     def get_pose_data(self, idx, q_idx, N_samples):
         retval = super().get_pose_data(idx, q_idx, N_samples)
-        real_idx, kp_idx = self.get_kp_idx(idx, q_idx)
         kp3d, bone, skts = retval["kp3d"], retval["bones"], retval["skts"]
         base_kp3d = np.copy(kp3d)
         base_bone = np.copy(bone)
 
         rest_pose = torch.tensor(np.array(self.dataset['rest_pose']))
-        bone[:, 17, :] += self.frame_perturbations[real_idx, 17, :]
+        bone[:, 17, :] += self.frame_perturbations[idx, 17, :]
         rlocs = torch.tensor(kp3d[:, 0, :])
         # TODO: hacky
         kp3d, skt = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone), root_locs=rlocs)]
@@ -341,10 +342,12 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
                 "kp3d": kp3d,
                 "bones": bone,
                 "skts": skts,
-                "cyls": cyl
+                "cyls": cyl,
+                "is_perturbed": np.isin(retval["real_kp_idx"], self._pose_adj_idx)
             }
         )
 
         if not self._written_caches[idx]:
-            self._write_cache_data(idx, retval)
+            cam_data = self.get_camera_data(idx, q_idx, N_samples)
+            self._write_cache_data(idx, cam_data, retval)
         return retval

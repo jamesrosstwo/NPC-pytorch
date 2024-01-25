@@ -270,10 +270,20 @@ class Trainer(object):
             total_loss += loss
             loss_stats.update(**loss_stat)
 
+
+        pred_rgb_map = preds['rgb_map']
+        pred_rgb_zero = preds['rgb0']
+        target_s = batch["target_s"]
+
+        if "is_perturbed" in batch:
+            pred_rgb_map = pred_rgb_map[batch["is_perturbed"]]
+            pred_rgb_zero = pred_rgb_zero[batch["is_perturbed"]]
+            target_s = target_s[batch["is_perturbed"]]
+
         # get extra stats that's irrelevant to loss
-        loss_stats.update(psnr=img2psnr(preds['rgb_map'], batch['target_s']).item())
+        loss_stats.update(psnr=img2psnr(pred_rgb_map, target_s).item())
         if 'rgb0' in preds:
-            loss_stats.update(psnr0=img2psnr(preds['rgb0'], batch['target_s']).item())
+            loss_stats.update(psnr0=img2psnr(pred_rgb_zero, target_s).item())
         loss_stats.update(alpha=preds['acc_map'].mean().item())
         if 'acc_map0' in preds:
             loss_stats.update(alpha0=preds['acc0'].mean().item())
