@@ -304,19 +304,18 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
         self._written_caches = defaultdict(bool)
 
     def _write_cache_data(self, idx, retval):
-        real_idx = self.kp_idxs[idx]
-        flat_img = self.dataset["imgs"][real_idx]
+        flat_img = self.dataset["imgs"][idx]
         W, H = self.dataset["img_shape"][1:3]
         img = flat_img.reshape((W, H, 3))
         plot_img = img[np.newaxis, :, :, :]
-        plot_base_skel = retval["base_bone"][:1]
-        perturbed_skel = retval["bones"][:1]
+        plot_base_skel = retval["base_kp3d"][:1]
+        perturbed_skel = retval["kp3d"][:1]
         c2ws = self.dataset["c2ws"]
 
         base_skel_img = draw_skeletons_3d(plot_img, plot_base_skel, c2ws, int(H), int(W), self.focals)
         perturbed_img = draw_skeletons_3d(plot_img, perturbed_skel, c2ws, int(H), int(W), self.focals)
-        plt.imsave(str(self._cache_dir / (str(real_idx) + "_base.png")), base_skel_img[0])
-        plt.imsave(str(self._cache_dir / (str(real_idx) + "_perturbed.png")), perturbed_img[0])
+        plt.imsave(str(self._cache_dir / (str(idx) + "_base.png")), base_skel_img[0])
+        plt.imsave(str(self._cache_dir / (str(idx) + "_perturbed.png")), perturbed_img[0])
 
         self._written_caches[idx] = True
 
