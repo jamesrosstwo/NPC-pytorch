@@ -152,6 +152,10 @@ def train(config: DictConfig):
                 elif k == 'joint_norms':
                     try:
                         writer.add_histogram('Joint Norms', v, i)
+                        p_e = training_stats["pose_error"].cpu().numpy()
+                        for joint_idx in range(24):
+                            hist = p_e[:, joint_idx]
+                            writer.add_histogram('Pose error for joint {0}'.format(joint_idx), hist, i)
                     except TypeError:
                         # https://github.com/pytorch/pytorch/issues/91516
                         print(v)

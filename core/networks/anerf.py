@@ -428,7 +428,13 @@ class ANeRF(nn.Module):
         if bgnet_ret is not None:
             rendered.update(**bgnet_ret)
 
-        return self.collect_outputs(rendered, rendered_coarse, encoded_is, encoded_coarse)
+        out = self.collect_outputs(rendered, rendered_coarse, encoded_is, encoded_coarse)
+        if pose_opt is not None:
+            out.update({
+                "kp3d": network_inputs["kp3d"]
+            })
+
+        return out
 
     def forward_render(
             self,

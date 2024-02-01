@@ -270,7 +270,6 @@ class Trainer(object):
             total_loss += loss
             loss_stats.update(**loss_stat)
 
-
         pred_rgb_map = preds['rgb_map']
         pred_rgb_zero = preds['rgb0']
         target_s = batch["target_s"]
@@ -279,6 +278,15 @@ class Trainer(object):
             pred_rgb_map = pred_rgb_map[batch["is_perturbed"]]
             pred_rgb_zero = pred_rgb_zero[batch["is_perturbed"]]
             target_s = target_s[batch["is_perturbed"]]
+
+        if "kp3d" in preds:
+            # https://github.com/pytorch/pytorch/issues/36748
+            unique, inverse = torch.unique(batch["real_kp_idx"], sorted=True, return_inverse=True)
+            perm = torch.arange(inverse.size(0), dtype=inverse.dtype, device=inverse.device)
+            inverse, perm = inverse.flip([0]), perm.flip([0])
+            perm = inverse.new_empty(unique.size(0)).scatter_(0, inverse, perm)
+            pose_error = torch.norm((preds["kp3d"] - batch["base_kp3d"])[perm], dim=2)
+            loss_stats.update(pose_error=pose_error)
 
         # get extra stats that's irrelevant to loss
         loss_stats.update(psnr=img2psnr(pred_rgb_map, target_s).item())
