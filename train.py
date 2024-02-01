@@ -150,15 +150,12 @@ def train(config: DictConfig):
                 if k in to_print:
                     output_str = f'{output_str}, {k}: {v:.6f}'
                 elif k == 'joint_norms':
-                    try:
-                        writer.add_histogram('Joint Norms', v, i)
-                        p_e = training_stats["pose_error"].cpu().numpy()
-                        for joint_idx in range(24):
-                            hist = p_e[:, joint_idx]
-                            writer.add_histogram('Pose error for joint {0}'.format(joint_idx), hist, i)
-                    except TypeError:
-                        # https://github.com/pytorch/pytorch/issues/91516
-                        print(v)
+                    writer.add_histogram('Joint Norms', v, i)
+                elif k == "pose_error":
+                    p_e = training_stats["pose_error"].cpu().numpy()
+                    for joint_idx in range(24):
+                        hist = p_e[:, joint_idx]
+                        writer.add_histogram('Pose error for joint {0}'.format(joint_idx), hist, i)
                 else:
                     # write to tensorboard
                     writer.add_scalar(f'Stats/{k}', v, i)
