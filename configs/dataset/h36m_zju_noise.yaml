@@ -3,8 +3,8 @@ h5_path: data/h36m_zju/${.subject}_train.h5
 
 
 cache_dir: outputs/zju_noise/
-perturb_proportion: 0.4
-perturb_strength: 0.15
+perturb_proportion: 0.5
+perturb_strength: 0.6
 split: train
 patch_size: 1
 subject: S9
