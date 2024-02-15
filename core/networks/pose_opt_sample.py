@@ -42,6 +42,7 @@ class PoseOptSample(nn.Module):
         self.perturb_strength = np.pi
         self._use_variance = use_variance
         self.current_joint_norms = torch.zeros(384)
+        self.current_joint_vars = torch.zeros(16 * 75)
 
         rvecs = torch.tensor(bones)
         # NOTE: this is different from original A-NeRF implementation, but should 
@@ -115,6 +116,7 @@ class PoseOptSample(nn.Module):
         rest_pose = self.rest_pose.clone()
         joint_residuals = rearrange(residual_rvecs, 'b (j d) -> b j d', j=J)
         self.current_joint_norms = torch.norm(joint_residuals, dim=2).flatten().detach().cpu().numpy()
+        self.current_joint_vars = variance.flatten().detach().cpu().numpy()
         kp, skts = calculate_kinematic(
             rest_pose[None],
             rvecs,

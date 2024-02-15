@@ -34,7 +34,7 @@ model:
   
   pose_opt:
     _target_: core.networks.pose_opt_sample.PoseOptSample
-    use_variance: false
+    use_variance: true
 
 #  pose_sampler:
 #    _target_: core.networks.pose_sampler.PoseSampler

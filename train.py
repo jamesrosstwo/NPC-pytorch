@@ -151,6 +151,8 @@ def train(config: DictConfig):
                     output_str = f'{output_str}, {k}: {v:.6f}'
                 elif k == 'joint_norms':
                     writer.add_histogram('Joint Norms', v, i)
+                elif k == "joint_vars":
+                    writer.add_histogram('Joint Variance', v, i)
                 elif k == "pose_error":
                     p_e = training_stats["pose_error"].cpu().numpy()
                     for joint_idx in range(24):

@@ -214,6 +214,7 @@ class Trainer(object):
 
         if pose_opt:
             stats["joint_norms"] = self.model.module.pose_opt.current_joint_norms
+            stats["joint_vars"] = self.model.module.pose_opt.current_joint_vars
 
         # Step 2. compute loss
         # TODO: used to have pose-optimization here ..
