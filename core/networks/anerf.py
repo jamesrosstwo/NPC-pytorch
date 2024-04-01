@@ -211,6 +211,7 @@ class ANeRF(nn.Module):
                 pose_opt,
                 rest_pose=self.rest_pose,
                 skel_type=self.skel_type,
+                _recursive_=False,
                 **kwargs
             )
 

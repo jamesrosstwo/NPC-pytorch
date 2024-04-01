@@ -196,7 +196,6 @@ class Trainer(object):
             for k, v in self.loss_config.items()]
 
     def train_batch(self, batch, global_iter=1):
-
         device_cnt = 1
         if isinstance(self.model, nn.DataParallel):
             if len(self.model.device_ids) > 1:

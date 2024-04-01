@@ -7,6 +7,6 @@ perturb_proportion: 0.5
 perturb_strength: 0.6
 split: train
 patch_size: 1
-subject: S9
+subject: S7
 mask_img: True
 perturb_bg: True

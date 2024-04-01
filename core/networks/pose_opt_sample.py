@@ -52,7 +52,6 @@ class PoseOptSample(nn.Module):
         self.register_buffer('rest_pose', rest_pose, persistent=False)
         self.register_buffer('pelvis', pelvis, persistent=False)
         self.register_buffer('rvecs', rvecs, persistent=False)
-
         self.pose_embs = nn.Embedding(self.n_embs, emb_dim)
 
         # initialize refinement network
