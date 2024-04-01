@@ -1,6 +1,6 @@
 render_dataset:
   _target_: run_render.BaseRenderDataset
-  subject: S9
+  subject: S7
   h5_path: data/h36m_zju/${.subject}_anim.h5
   idxs: np.arange(84)
   resolution: [1000, 1000]
