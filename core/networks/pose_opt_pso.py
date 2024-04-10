@@ -1,3 +1,4 @@
+import math
 from typing import Optional, Dict, Any
 
 import numpy as np
@@ -82,7 +83,7 @@ class PoseOptPSO(nn.Module):
         return self._particles.shape[1]
 
     def _init_pso(self, n_frames, n_particles, n_joints):
-        upper_bound = torch.pi / 10
+        upper_bound = math.pi / 10
         lower_bound = -upper_bound
 
         # We store the current position & velocity of each particle.
