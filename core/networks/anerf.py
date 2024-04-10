@@ -403,7 +403,14 @@ class ANeRF(nn.Module):
         z_vals = is_sample_info['z_vals']  # include both coarse and importance samples
 
         # Step 5. model evaluation (if importance sampling enabled)
-        network_inputs = self.get_network_inputs(batch, pts_is, is_sample_info['z_vals_is'])
+        opt_info = {}
+        if pose_opt and self.pose_opt is not None:
+            opt_info.update(skts=network_inputs['skts'],
+                            kp3d=network_inputs['kp3d'],
+                            bones=network_inputs['bones'],
+                            particle_idx=network_inputs["particle_idx"])
+        network_inputs = self.get_network_inputs(batch, pts_is, is_sample_info['z_vals_is'], opt_info=opt_info)
+
         raw_is, encoded_is = self.evaluate_pts(network_inputs, encoded_coarse=encoded_coarse)
 
         # Step 6. merge coarse and importance prediction for rendering
@@ -432,7 +439,8 @@ class ANeRF(nn.Module):
         out = self.collect_outputs(rendered, rendered_coarse, encoded_is, encoded_coarse)
         if pose_opt is not None:
             out.update({
-                "kp3d": network_inputs["kp3d"]
+                "kp3d": network_inputs["kp3d"],
+                "network_inputs": network_inputs
             })
 
         return out
@@ -566,6 +574,7 @@ class ANeRF(nn.Module):
                 'kp3d', 'skts', 'bones', 'cam_idxs',
                 'rays_o', 'rays_d', 'temp_kp', 'temp_bone',
                 'temp_skt', 'real_kp_idx', 'real_cam_idx'],
+            opt_info: Optional[Mapping[str, Any]] = None,
             **kwargs
     ):
         """ Collect network inputs from the batch.
@@ -585,6 +594,9 @@ class ANeRF(nn.Module):
 
         if self.cam_cal is not None:
             ret = self.cam_cal(ret, z_vals)
+
+        if opt_info is not None:
+            ret.update(opt_info)
 
         return ret
 

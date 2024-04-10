@@ -1,3 +1,5 @@
+from typing import Dict
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -7,6 +9,7 @@ from omegaconf import DictConfig
 
 from core.gradient_capture import GradientCapture
 from core.losses import *
+from core.networks.pose_opt_pso import PoseOptPSO
 
 
 def img2mse(img, target):
@@ -145,11 +148,17 @@ class Trainer(object):
             self.gradient_capture.register_pred_hooks(self.model)
             self.gradient_capture.register_param_hooks(self.model)
 
+        self._loss_hooks = dict()
+
         # initialize optimizerni
         self.init_optimizer(ckpt)
 
         # initialize loss function
         self.init_loss_fns()
+
+        pose_opt_module = self.model.module.pose_opt
+        if isinstance(pose_opt_module, PoseOptPSO):
+            self.attach_loss_hook(pose_opt_module.on_loss_evaluated, name="pose_opt")
 
     def init_optimizer(self, ckpt=None):
         if isinstance(self.model, nn.DataParallel):
@@ -195,6 +204,17 @@ class Trainer(object):
             eval(k)(**v)
             for k, v in self.loss_config.items()]
 
+    def attach_loss_hook(self, fn: Callable[[Dict, torch.Tensor], Any], name: str):
+        # Called functions will receive the network inputs and the loss
+        self._loss_hooks[name] = fn
+
+    def remove_hook(self, name: str):
+        del self._loss_hooks[name]
+
+    def _invoke_loss_hooks(self, network_inputs: Dict, loss: torch.Tensor):
+        for hook_nm, hook_fn in self._loss_hooks.items():
+            hook_fn(network_inputs, loss)
+
     def train_batch(self, batch, global_iter=1):
         device_cnt = 1
         if isinstance(self.model, nn.DataParallel):
@@ -209,16 +229,22 @@ class Trainer(object):
         batch['device_cnt'] = device_cnt
         batch['global_iter'] = global_iter
         pose_opt = self.config.get('pose_opt', False)
+
         preds = self.model(batch, pose_opt=pose_opt)
 
+        network_inputs = preds["network_inputs"]
+
         if pose_opt:
-            stats["joint_norms"] = self.model.module.pose_opt.current_joint_norms
-            stats["joint_vars"] = self.model.module.pose_opt.current_joint_vars
+            pose_opt_module = self.model.module.pose_opt
+            stats["joint_norms"] = pose_opt_module.current_joint_norms
+            stats["joint_vars"] = pose_opt_module.current_joint_vars
 
         # Step 2. compute loss
         # TODO: used to have pose-optimization here ..
         loss, new_stats = self.compute_loss(batch, preds, global_iter=global_iter)
         stats.update(new_stats)
+
+        self._invoke_loss_hooks(network_inputs, loss)
 
         # clean up after step
         loss.backward()

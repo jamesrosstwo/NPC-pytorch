@@ -74,6 +74,4 @@ losses:
 
   VolScaleLoss:
     weight: 0.001
-
-trainer:
-  pose_opt: True
+  

@@ -17,7 +17,7 @@ model:
   agg_type: sigmoid
 
   pose_opt:
-    _target_: core.networks.pose_opt_sample.PoseOptSample
+    _target_: core.networks.pose_opt_pso.PoseOptPSO
     use_variance: false
 
   graph_net:
