@@ -407,8 +407,10 @@ class ANeRF(nn.Module):
         if pose_opt and self.pose_opt is not None:
             opt_info.update(skts=network_inputs['skts'],
                             kp3d=network_inputs['kp3d'],
-                            bones=network_inputs['bones'],
-                            particle_idx=network_inputs["particle_idx"])
+                            bones=network_inputs['bones'])
+
+            if "particle_idx" in network_inputs:
+                opt_info["particle_idx"] = network_inputs["particle_idx"]
         network_inputs = self.get_network_inputs(batch, pts_is, is_sample_info['z_vals_is'], opt_info=opt_info)
 
         raw_is, encoded_is = self.evaluate_pts(network_inputs, encoded_coarse=encoded_coarse)
