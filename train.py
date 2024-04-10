@@ -160,7 +160,7 @@ def train(config: DictConfig):
                     except NotImplementedError:
                         pass
                 elif k == "pose_error":
-                    p_e = training_stats["pose_error"].cpu().numpy()
+                    p_e = training_stats["pose_error"].detach().cpu().numpy()
                     for joint_idx in range(24):
                         hist = p_e[:, joint_idx]
                         writer.add_histogram('Pose error for joint {0}'.format(joint_idx), hist, i)
