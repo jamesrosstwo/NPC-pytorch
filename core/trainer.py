@@ -232,19 +232,18 @@ class Trainer(object):
 
         preds = self.model(batch, pose_opt=pose_opt)
 
-        network_inputs = preds["network_inputs"]
-
-        if pose_opt:
-            pose_opt_module = self.model.module.pose_opt
-            stats["joint_norms"] = pose_opt_module.current_joint_norms
-            stats["joint_vars"] = pose_opt_module.current_joint_vars
-
         # Step 2. compute loss
         # TODO: used to have pose-optimization here ..
         loss, new_stats = self.compute_loss(batch, preds, global_iter=global_iter)
         stats.update(new_stats)
 
-        self._invoke_loss_hooks(network_inputs, loss)
+
+        if pose_opt:
+            pose_opt_module = self.model.module.pose_opt
+            stats["joint_norms"] = pose_opt_module.current_joint_norms
+            stats["joint_vars"] = pose_opt_module.current_joint_vars
+            network_inputs = preds["network_inputs"]
+            self._invoke_loss_hooks(network_inputs, loss)
 
         # clean up after step
         loss.backward()
