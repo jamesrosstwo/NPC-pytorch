@@ -35,9 +35,7 @@ model:
   pose_opt:
     _target_: core.networks.pose_opt.PoseOpt
 
-  pose_sampler:
-    _target_: core.networks.pose_sampler.PoseSampler
-  
+
 trainer:
   pose_opt: true
   

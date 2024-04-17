@@ -30,9 +30,9 @@ class PoseOptPSO(nn.Module):
             n_particles: int = 10,
             rot_6d: bool = False,
             n_embs: Optional[int] = None,
-            inertia_constant: float = 1,
-            exploration_constant: float = 1,
-            exploitation_constant: float = 1,
+            inertia_constant: float = 0.7,
+            exploration_constant: float = 1.2,
+            exploitation_constant: float = 0.8,
             **kwargs,
     ):
         N_joints = kp3d.shape[1]

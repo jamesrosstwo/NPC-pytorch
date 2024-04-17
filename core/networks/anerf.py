@@ -151,7 +151,6 @@ class ANeRF(nn.Module):
             bkgd_net: Optional[DictConfig] = None,
             cam_cal: Optional[DictConfig] = None,
             pose_opt: Optional[DictConfig] = None,
-            pose_sampler: Optional[DictConfig] = None,
             **kwargs,
     ):
         '''
@@ -213,14 +212,6 @@ class ANeRF(nn.Module):
                 skel_type=self.skel_type,
                 _recursive_=False,
                 **kwargs
-            )
-
-        if pose_sampler is not None:
-            self.pose_sampler = instantiate(
-                pose_sampler,
-                rest_pose=self.rest_pose,
-                skel_type=self.skel_type,
-                n_framecodes=self.n_framecodes
             )
 
     @property
@@ -347,12 +338,6 @@ class ANeRF(nn.Module):
         # Step 2. model evaluation
         # TODO: do we need a get_nerf_inputs function?
         network_inputs = self.get_network_inputs(batch, pts, z_vals)
-        # if self.pose_sampler is not None:
-        #     network_inputs.update(self.pose_sampler(
-        #         kp3d=network_inputs["kp3d"],
-        #         bones=network_inputs["bones"],
-        #         kp_idxs=network_inputs['real_kp_idx']
-        #     ))
 
         if pose_opt and self.pose_opt is not None:
             # TODO: is this a good way?

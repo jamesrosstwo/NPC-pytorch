@@ -287,7 +287,10 @@ class ZJUH36MDataset(ZJUMocapDataset):
         return render_data
 
 
+
 class NoisyZJUH36MDataset(ZJUH36MDataset):
+    JOINTS_TO_PERTURB = [17]
+    AFFECTED_JOINTS = [17, 19, 21, 23]
     def __init__(self, cache_dir: str, perturb_proportion=0.4, perturb_strength=np.pi / 24, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -328,7 +331,7 @@ class NoisyZJUH36MDataset(ZJUH36MDataset):
         base_bone = np.copy(bone)
 
         rest_pose = torch.tensor(np.array(self.dataset['rest_pose']))
-        bone[:, 17, :] += self.frame_perturbations[idx, 17, :]
+        bone[:, NoisyZJUH36MDataset.JOINTS_TO_PERTURB, :] += self.frame_perturbations[idx, NoisyZJUH36MDataset.JOINTS_TO_PERTURB, :]
         rlocs = torch.tensor(kp3d[:, 0, :])
         # TODO: hacky
         kp3d, skt = [x.cpu().numpy() for x in calculate_kinematic(rest_pose, torch.tensor(bone), root_locs=rlocs)]

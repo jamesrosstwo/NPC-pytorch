@@ -3,6 +3,7 @@ import glob
 import hydra
 import imageio
 import numpy as np
+import torch
 
 import torch.nn as nn
 from copy import deepcopy
@@ -161,6 +162,11 @@ def train(config: DictConfig):
                         pass
                 elif k == "pose_error":
                     p_e = training_stats["pose_error"].detach().cpu().numpy()
+                    from core.datasets.zju import NoisyZJUH36MDataset
+                    j_idx = NoisyZJUH36MDataset.AFFECTED_JOINTS
+                    p_e_j = p_e[:, j_idx]
+                    writer.add_scalar("Stats/Mean Pose Error", p_e_j.mean(), i)
+                    writer.add_scalar("Stats/Pose Error Variance", np.mean(np.std(p_e_j, axis=0)), i)
                     for joint_idx in range(24):
                         hist = p_e[:, joint_idx]
                         writer.add_histogram('Pose error for joint {0}'.format(joint_idx), hist, i)
