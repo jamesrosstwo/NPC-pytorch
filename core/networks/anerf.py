@@ -560,7 +560,7 @@ class ANeRF(nn.Module):
             keys_from_batch: List[str] = [
                 'kp3d', 'skts', 'bones', 'cam_idxs',
                 'rays_o', 'rays_d', 'temp_kp', 'temp_bone',
-                'temp_skt', 'real_kp_idx', 'real_cam_idx'],
+                'temp_skt', 'real_kp_idx', 'real_cam_idx', 'pixel_idxs'],
             opt_info: Optional[Mapping[str, Any]] = None,
             **kwargs
     ):

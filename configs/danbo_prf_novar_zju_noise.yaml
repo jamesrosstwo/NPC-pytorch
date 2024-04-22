@@ -25,7 +25,7 @@ model:
     W: 128
     D: 4
     fc_D: 2
-    opt_scale: True
+    opt_scale: False
   
   voxel_agg_net:
     _target_: core.networks.gnn_backbone.MixGNN

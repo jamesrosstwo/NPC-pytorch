@@ -52,7 +52,7 @@ class MetropolisRaySampler(MCMCRaySampler):
         self._perturb_strength = perturb_strength
         self._worker_samples = np.array_split(np.arange(self.n_frames), self._n_workers)
         self._initialized = np.zeros((self._n_workers, self.n_frames), dtype=bool)
-        self._is_active = False
+        self._is_active = True
 
     # For warmup iters
     def activate(self):
@@ -111,9 +111,11 @@ class MetropolisRaySampler(MCMCRaySampler):
         return out
 
     def add_sample(self, network_inputs: Dict, loss: torch.Tensor):
-        alpha = self._last_loss / loss
-        r = np.random.rand()
-        if r > alpha:
-            self._current_samples = self._proposal
-        self._last_loss = loss
-        # Accept the sample
+        l = loss.detach().cpu().numpy()
+        alpha = self._last_loss / l
+        skip = network_inputs["kp3d"].shape[0] // network_inputs["N_unique"]
+        frame_idxs = network_inputs["real_kp_idx"][::skip].detach().cpu().numpy()
+        r = np.random.rand(self.n_concurrent)
+        to_adj = np.where(r < alpha)
+        self._current_samples[:, frame_idxs][:, :, to_adj] = self._proposal[:, frame_idxs][:, :, to_adj]
+        self._last_loss = l
