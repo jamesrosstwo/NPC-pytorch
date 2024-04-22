@@ -97,7 +97,10 @@ class ZJUMocapDataset(BaseH5Dataset):
             full_img = np.zeros((np.prod(self.HW), 3), dtype=np.float32)
             full_img[fg_idx] = self.dataset['imgs'][idx, fg_idx] / 255.
         else:
-            fg = self.dataset['masks'][idx, pixel_idxs].astype(np.float32)
+            try:
+                fg = self.dataset['masks'][idx, pixel_idxs].astype(np.float32)
+            except:
+                print("asd")
             full_img = None
             full_fg = None
 

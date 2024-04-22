@@ -10,3 +10,7 @@ patch_size: 1
 subject: S7
 mask_img: True
 perturb_bg: True
+
+
+ray_sampler:
+  _target_: core.utils.mcmc.MetropolisRaySampler

@@ -41,7 +41,7 @@ def build_dataloader(config: DictConfig):
         dataset_config = OmegaConf.load(config.dataset)
     else:
         dataset_config = config.dataset
-    dataset = instantiate(dataset_config, N_samples=N_samples)
+    dataset = instantiate(dataset_config, N_samples=N_samples, _recursive_=False)
 
     # TODO: config these in a different way?
     data_attrs = dataset.get_meta()

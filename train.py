@@ -140,8 +140,8 @@ def train(config: DictConfig):
         # save periodically
         if (i % config.i_save) == 0:
             trainer.save_ckpt(global_iter=i, path=os.path.join(log_path, f'{i:07d}.th'))
-        
         if (i % config.i_print) == 0:
+
             # logging
             trainer.save_ckpt(global_iter=i, path=os.path.join(log_path, f'latest.th'))
             to_print = ['total_loss', 'psnr', 'alpha', 'lr'] # things to print out

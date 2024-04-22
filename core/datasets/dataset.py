@@ -1,3 +1,5 @@
+from typing import Optional
+
 import cv2
 import time
 import bisect
@@ -5,13 +7,16 @@ import h5py, math
 import torch
 import random
 import numpy as np
+from hydra.utils import instantiate
+from omegaconf import DictConfig
 from torch.utils.data import Dataset, ConcatDataset
 
 from core.networks.pose_opt import pose_ckpt_to_pose_data
+from core.utils.mcmc import MCMCRaySampler
 from core.utils.skeleton_utils import (
-    SMPLSkeleton, 
-    cylinder_to_box_2d, 
-    nerf_c2w_to_extrinsic, 
+    SMPLSkeleton,
+    cylinder_to_box_2d,
+    nerf_c2w_to_extrinsic,
     build_intrinsic,
 )
 
@@ -20,22 +25,23 @@ class BaseH5Dataset(Dataset):
 
     # TODO: poor naming
     def __init__(
-        self, 
-        h5_path, 
-        N_samples=96, 
-        patch_size=1, 
-        split='full',
-        N_nms=0, 
-        subject=None, 
-        mask_img=False, 
-        multiview=False,
-        perturb_bg=False, 
-        inverse_sampling=False, 
-        bkgd_mul=1.0,
-        read_full_img=False, 
-        dilate_mask=False,
-        full_perturb_bg=False, 
-        **kwargs
+            self,
+            h5_path,
+            N_samples=96,
+            patch_size=1,
+            split='full',
+            N_nms=0,
+            subject=None,
+            mask_img=False,
+            multiview=False,
+            perturb_bg=False,
+            inverse_sampling=False,
+            bkgd_mul=1.0,
+            read_full_img=False,
+            dilate_mask=False,
+            full_perturb_bg=False,
+            ray_sampler: Optional[DictConfig] = None,
+            **kwargs
     ):
         '''
         Base class for multi-proc h5 dataset
@@ -72,14 +78,22 @@ class BaseH5Dataset(Dataset):
         self.N_samples = N_samples
         self.patch_size = patch_size
         self.N_nms = int(math.floor(N_nms)) if N_nms >= 1.0 else float(N_nms)
-        self._idx_map = None # map queried idx to predefined idx
-        self._render_idx_map = None # map idx for render
+        self._idx_map = None  # map queried idx to predefined idx
+        self._render_idx_map = None  # map idx for render
 
         self.init_meta()
         self.init_len()
         self.box2d = None
         if self.N_nms > 0.0:
             self.init_box2d()
+
+        self._training_hooks = list()
+        self._ray_sampler: Optional[MCMCRaySampler] = ray_sampler
+
+
+    @property
+    def training_hooks(self):
+        return self._training_hooks
 
     def __getitem__(self, q_idx):
         '''
@@ -140,7 +154,7 @@ class BaseH5Dataset(Dataset):
         imageio.imwrite(f'h36m_debug/{idx}.png', target_s)
         """
         H, W = self.HW
-        pixel_idxs = np.stack([pixel_idxs // W, pixel_idxs % W],axis=-1) 
+        pixel_idxs = np.stack([pixel_idxs // W, pixel_idxs % W], axis=-1)
 
         return_dict = {
             'rays_o': rays_o,
@@ -180,6 +194,7 @@ class BaseH5Dataset(Dataset):
         print('init dataset')
 
         self.dataset = h5py.File(self.h5_path, 'r')
+        self.init_ray_sampler()
 
     def init_meta(self):
         '''
@@ -218,8 +233,8 @@ class BaseH5Dataset(Dataset):
         # pre-computed direction, the first two cols
         # need to be divided by focal
         self._dirs = np.stack([
-            (i-offset_x),
-            -(j-offset_y),
+            (i - offset_x),
+            -(j - offset_y),
             -np.ones_like(i)
         ], axis=-1)
 
@@ -228,7 +243,7 @@ class BaseH5Dataset(Dataset):
 
         # store pose and camera data directly in memory (they are small)
         self.gt_kp3d = dataset['gt_kp3d'][:] if 'gt_kp3d' in self.dataset_keys else None
-        self.kp_map, self.kp_uidxs = None, None # only not None when self.multiview = True
+        self.kp_map, self.kp_uidxs = None, None  # only not None when self.multiview = True
         self.kp3d, self.bones, self.skts, self.cyls = self._load_pose_data(dataset)
 
         self.focals, self.c2ws = self._load_camera_data(dataset)
@@ -243,12 +258,25 @@ class BaseH5Dataset(Dataset):
 
         dataset.close()
 
+
+    def init_ray_sampler(self):
+        if isinstance(self._ray_sampler, DictConfig):
+            n_concurrent = self.N_samples // int(self.patch_size ** 2)
+            self._ray_sampler = instantiate(
+                self._ray_sampler,
+                n_concurrent=n_concurrent,
+                bounds=self.HW,
+                sampling_masks=self.dataset['sampling_masks'],
+                n_frames=self.kp3d.shape[0]
+            )
+            self._training_hooks.append(self._ray_sampler.add_sample)
+
     def _load_pose_data(self, dataset):
         '''
         read pose data from .h5 file
         '''
         kp3d, bones, skts, cyls = dataset['kp3d'][:], dataset['bones'][:], \
-                                    dataset['skts'][:], dataset['cyls'][:]
+            dataset['skts'][:], dataset['cyls'][:]
         if self.multiview:
             return self._load_multiview_pose(dataset, kp3d, bones, skts, cyls)
         return kp3d, bones, skts, cyls
@@ -286,10 +314,10 @@ class BaseH5Dataset(Dataset):
             # get kp index and kp, skt, bone, cyl
             _, _, _, _, cyls = self.get_pose_data(idx, q_idx, 1)
             tl, br, _ = cylinder_to_box_2d(
-                cyls[0], 
-                [H, W, focal], 
+                cyls[0],
+                [H, W, focal],
                 nerf_c2w_to_extrinsic(c2w),
-                center=center, 
+                center=center,
                 scale=1.3
             )
             self.box2d.append((tl, br))
@@ -319,9 +347,7 @@ class BaseH5Dataset(Dataset):
 
         cam_idx = np.array(cam_idx).reshape(-1, 1).repeat(N_samples, 1).reshape(-1)
 
-
         return c2w, K, focal, center, cam_idx
-
 
     def get_img_data(self, idx, pixel_idxs, fg=None):
         '''
@@ -342,7 +368,7 @@ class BaseH5Dataset(Dataset):
         else:
             full_fg = None
             full_img = None
-        
+
         img = self.dataset['imgs'][idx, pixel_idxs].astype(np.float32) / 255.
 
         bg, bg_orig = None, None
@@ -353,13 +379,13 @@ class BaseH5Dataset(Dataset):
 
             if self.perturb_bg:
                 noise = np.random.random(bg_orig.shape).astype(np.float32)
-                #noise= (1 - fg) * noise # do not perturb foreground area!
+                # noise= (1 - fg) * noise # do not perturb foreground area!
                 # do not perturb foreground area!
                 if self.full_perturb_bg:
                     bg = noise
                 else:
                     bg = (1 - fg) * noise + fg * bg_orig * self.bkgd_mul
-                #bg = noise
+                # bg = noise
             else:
                 bg = bg_orig
 
@@ -373,35 +399,18 @@ class BaseH5Dataset(Dataset):
         return sampled pixels (in (H*W,) indexing, not (H, W))
         '''
         p = self.patch_size
-        N_rand = self.N_samples // int(p**2)
-        # TODO: check if sampling masks need adjustment
-        # assume sampling masks are of shape (N, H, W, 1)
-        #time0 = time.time()
-        sampling_mask = self.dataset['sampling_masks'][idx].reshape(-1)
-        if self.dilate_mask:
-            border = 3
-            kernel = np.ones((border, border), np.uint8)
-            sampling_mask = cv2.dilate(sampling_mask.reshape(*self.HW), kernel=kernel, iterations=1).reshape(-1)
-        #print(f'fetch mask time {time.time()-time0}')
-
-        valid_idxs, = np.where(sampling_mask>0)
-        if len(valid_idxs) == 0 or len(valid_idxs) < N_rand:
-            valid_idxs = np.arange(len(sampling_mask))
-
-        sampled_idxs = np.random.choice(
-            valid_idxs,
-            N_rand,
-            replace=False
-        )
+        frame_idx, _ = self.get_kp_idx(idx, q_idx)
+        sampled_idxs = self._ray_sampler.sample(frame_idx)
+        sampling_mask = self._ray_sampler.get_sampling_mask(idx)
         if self.patch_size > 1:
             H, W = self.HW
             hs, ws = sampled_idxs // W, sampled_idxs % W
             # clip to valid range
-            hs = np.clip(hs, a_min=0, a_max=H-p)
-            ws = np.clip(ws, a_min=0, a_max=W-p)
+            hs = np.clip(hs, a_min=0, a_max=H - p)
+            ws = np.clip(ws, a_min=0, a_max=W - p)
             _s = []
             for h, w in zip(hs, ws):
-                patch = self._pixel_idxs[h:h+p, w:w+p].reshape(-1)
+                patch = self._pixel_idxs[h:h + p, w:w + p].reshape(-1)
                 _s.append(patch)
 
             sampled_idxs = np.array(_s).reshape(-1)
@@ -412,8 +421,8 @@ class BaseH5Dataset(Dataset):
             N_nms = self.N_nms
         else:
             # roll a dice
-            #dice = np.random.random()
-            #N_nms = int(self.N_nms > dice)
+            # dice = np.random.random()
+            # N_nms = int(self.N_nms > dice)
             N_nms = int(self.N_nms > np.random.random())
 
         if N_nms > 0:
@@ -442,14 +451,13 @@ class BaseH5Dataset(Dataset):
         vx = vx + tl[0]
         idxs = vy * W + vx
 
-        #selected_idxs = np.random.choice(idxs, size=(N_samples,), replace=False)
+        # selected_idxs = np.random.choice(idxs, size=(N_samples,), replace=False)
         # This is faster for small N_samples
         selected_idxs = np.random.default_rng().choice(idxs, size=(N_samples,), replace=False)
 
         return selected_idxs
 
     def get_rays(self, c2w, focal, pixel_idxs, center=None):
-
         dirs = self._dirs[pixel_idxs].copy()
         if center is not None:
             center = center.copy()
@@ -461,9 +469,10 @@ class BaseH5Dataset(Dataset):
         I = np.eye(3)
 
         if np.isclose(I, c2w[:3, :3]).all():
-            rays_d = dirs # no rotation required if rotation is identity
+            rays_d = dirs  # no rotation required if rotation is identity
         else:
-            rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3,:3], -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
+            rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3, :3],
+                            -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
 
         rays_o = np.broadcast_to(c2w[:3, -1], rays_d.shape)
         rays_d = rays_d / np.linalg.norm(rays_d, axis=-1)[..., None]
@@ -479,7 +488,7 @@ class BaseH5Dataset(Dataset):
         # TODO: think this part through
         temp_val = None
         if self.temp_validity is not None:
-            temp_val = self.temp_validity[real_idx:real_idx+1]
+            temp_val = self.temp_validity[real_idx:real_idx + 1]
 
         kp_idx = np.array([kp_idx]).repeat(N_samples, 0)
         kp = kp.repeat(N_samples, 0)
@@ -488,20 +497,20 @@ class BaseH5Dataset(Dataset):
         skt = skt.repeat(N_samples, 0)
 
         return {
-            'kp_idx': kp_idx, 
-            'kp3d': kp, 
-            'bones': bone, 
-            'skts': skt, 
+            'kp_idx': kp_idx,
+            'kp3d': kp,
+            'bones': bone,
+            'skts': skt,
             'cyls': cyl,
-            #'real_kp_idx': (np.array([real_idx]*N_samples) / self.kp_idxs.max()).astype(np.float32),
-            'real_kp_idx': np.array([real_idx]*N_samples),
+            # 'real_kp_idx': (np.array([real_idx]*N_samples) / self.kp_idxs.max()).astype(np.float32),
+            'real_kp_idx': np.array([real_idx] * N_samples),
         }
-    def _get_pose_data(self, real_idx):
-        return self.kp3d[real_idx:real_idx+1].astype(np.float32), \
-               self.bones[real_idx:real_idx+1].astype(np.float32), \
-               self.cyls[real_idx:real_idx+1].astype(np.float32), \
-               self.skts[real_idx:real_idx+1].astype(np.float32)
 
+    def _get_pose_data(self, real_idx):
+        return self.kp3d[real_idx:real_idx + 1].astype(np.float32), \
+            self.bones[real_idx:real_idx + 1].astype(np.float32), \
+            self.cyls[real_idx:real_idx + 1].astype(np.float32), \
+            self.skts[real_idx:real_idx + 1].astype(np.float32)
 
     def get_kp_idx(self, idx, q_idx):
         '''
@@ -589,12 +598,11 @@ class BaseH5Dataset(Dataset):
             betas = betas[k_idxs]
         betas = betas.mean(0, keepdims=True).repeat(len(betas), 0)
 
-        
         data_attrs = {
             'hwf': hwf,
             'center': center,
             'c2ws': self.c2ws[c_idxs],
-            'near': 60., 'far': 100., # don't really need this
+            'near': 60., 'far': 100.,  # don't really need this
             'n_views': self.data_len,
             # skeleton-related info
             'skel_type': self.skel_type,
@@ -604,8 +612,8 @@ class BaseH5Dataset(Dataset):
             'skts': self.skts[k_idxs],
             'bones': self.bones[k_idxs],
             'betas': betas,
-            'kp_map': self.kp_map, # important for multiview setting
-            'kp_uidxs': self.kp_uidxs, # important for multiview setting
+            'kp_map': self.kp_map,  # important for multiview setting
+            'kp_uidxs': self.kp_uidxs,  # important for multiview setting
         }
 
         dataset.close()
@@ -641,7 +649,7 @@ class BaseH5Dataset(Dataset):
         center = None
         if self.centers is not None:
             center = self.centers[c_idxs].copy()
-        
+
         # TODO: c_idxs, k_idxs ... confusion
         render_data = {
             'imgs': render_imgs,
@@ -660,7 +668,7 @@ class BaseH5Dataset(Dataset):
             'kp_idxs_len': len(self.kp3d),
             'kp3d': self.kp3d[k_idxs],
             'skts': self.skts[k_idxs],
-            'bones':self.bones[k_idxs],
+            'bones': self.bones[k_idxs],
         }
 
         dataset.close()
@@ -693,4 +701,3 @@ class PoseRefinedDataset(BaseH5Dataset):
         if self.multiview:
             return self._load_multiview_pose(dataset, kp3d, bones, skts, cyls)
         return kp3d, bones, skts, cyls
-
