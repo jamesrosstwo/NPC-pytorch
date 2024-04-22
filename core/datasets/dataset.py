@@ -89,6 +89,15 @@ class BaseH5Dataset(Dataset):
 
         self._training_hooks = list()
         self._ray_sampler: Optional[MCMCRaySampler] = ray_sampler
+        if isinstance(self._ray_sampler, DictConfig):
+            n_concurrent = self.N_samples // int(self.patch_size ** 2)
+            self._ray_sampler = instantiate(
+                self._ray_sampler,
+                n_concurrent=n_concurrent,
+                bounds=self.HW,
+                n_frames=self.kp3d.shape[0]
+            )
+            self._training_hooks.append(self._ray_sampler.add_sample)
 
 
     @property
@@ -194,7 +203,6 @@ class BaseH5Dataset(Dataset):
         print('init dataset')
 
         self.dataset = h5py.File(self.h5_path, 'r')
-        self.init_ray_sampler()
 
     def init_meta(self):
         '''
@@ -258,18 +266,6 @@ class BaseH5Dataset(Dataset):
 
         dataset.close()
 
-
-    def init_ray_sampler(self):
-        if isinstance(self._ray_sampler, DictConfig):
-            n_concurrent = self.N_samples // int(self.patch_size ** 2)
-            self._ray_sampler = instantiate(
-                self._ray_sampler,
-                n_concurrent=n_concurrent,
-                bounds=self.HW,
-                sampling_masks=self.dataset['sampling_masks'],
-                n_frames=self.kp3d.shape[0]
-            )
-            self._training_hooks.append(self._ray_sampler.add_sample)
 
     def _load_pose_data(self, dataset):
         '''
@@ -399,9 +395,23 @@ class BaseH5Dataset(Dataset):
         return sampled pixels (in (H*W,) indexing, not (H, W))
         '''
         p = self.patch_size
+        N_rand = self.N_samples // int(p**2)
+        # TODO: check if sampling masks need adjustment
+        # assume sampling masks are of shape (N, H, W, 1)
+        #time0 = time.time()
+        sampling_mask = self.dataset['sampling_masks'][idx].reshape(-1)
+        if self.dilate_mask:
+            border = 3
+            kernel = np.ones((border, border), np.uint8)
+            sampling_mask = cv2.dilate(sampling_mask.reshape(*self.HW), kernel=kernel, iterations=1).reshape(-1)
+        #print(f'fetch mask time {time.time()-time0}')
+
+        valid_idxs, = np.where(sampling_mask>0)
+        if len(valid_idxs) == 0 or len(valid_idxs) < N_rand:
+            valid_idxs = np.arange(len(sampling_mask))
+
         frame_idx, _ = self.get_kp_idx(idx, q_idx)
-        sampled_idxs = self._ray_sampler.sample(frame_idx)
-        sampling_mask = self._ray_sampler.get_sampling_mask(idx)
+        sampled_idxs = self._ray_sampler.sample(frame_idx, valid_idxs)
         if self.patch_size > 1:
             H, W = self.HW
             hs, ws = sampled_idxs // W, sampled_idxs % W

@@ -131,9 +131,17 @@ def train(config: DictConfig):
     start = start + 1
     data_iter = iter(dataloader)
 
+
+    for hook in dataloader.dataset.training_hooks:
+        trainer.attach_loss_hook(hook, str(hook))
+    ray_sampling_warmup = 50
+
     for i in trange(start, config.iters+1):
 
         batch = next(data_iter)
+        if i == ray_sampling_warmup:
+            print("asd")
+
         #preds = model(to_device(batch, 'cuda'))
         training_stats = trainer.train_batch(batch, global_iter=i)
 
