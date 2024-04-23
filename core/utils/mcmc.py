@@ -34,7 +34,7 @@ class MCMCRaySampler(ABC):
 
 
 class MetropolisRaySampler(MCMCRaySampler):
-    def __init__(self, max_iters=100, perturb_strength=15, n_roll=20, *args, **kwargs):
+    def __init__(self, max_iters=100, perturb_strength=15, n_roll=20, is_active=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._n_workers = 16
 
@@ -52,7 +52,7 @@ class MetropolisRaySampler(MCMCRaySampler):
         self._perturb_strength = perturb_strength
         self._worker_samples = np.array_split(np.arange(self.n_frames), self._n_workers)
         self._initialized = np.zeros((self._n_workers, self.n_frames), dtype=bool)
-        self._is_active = True
+        self._is_active = is_active
 
     # For warmup iters
     def activate(self):

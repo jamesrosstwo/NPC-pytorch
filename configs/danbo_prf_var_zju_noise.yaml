@@ -1,6 +1,6 @@
 defaults:
   - basic
-  - dataset: h36m_zju_noise
+  - dataset: h36m_zju_noise_no_mcmc
 
 model:
   _target_: core.networks.danbo.DANBO
