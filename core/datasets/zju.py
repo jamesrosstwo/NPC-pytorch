@@ -291,7 +291,7 @@ class ZJUH36MDataset(ZJUMocapDataset):
 class NoisyZJUH36MDataset(ZJUH36MDataset):
     JOINTS_TO_PERTURB = [17]
     AFFECTED_JOINTS = [17, 19, 21, 23]
-    def __init__(self, cache_dir: str, perturb_proportion=0.4, perturb_strength=np.pi / 24, *args, **kwargs):
+    def __init__(self, cache_dir: str="outputs/zju_noise/", perturb_proportion=0.4, perturb_strength=np.pi / 24, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         np.random.seed(12345)

@@ -5,6 +5,7 @@ render_dataset:
   idxs: np.arange(84)
   resolution: [1000, 1000]
   cam_overwrite: -1
+  cache_dir: outputs/zju_noise/
 
 
 model_config: ???

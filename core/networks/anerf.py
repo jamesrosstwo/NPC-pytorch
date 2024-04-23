@@ -43,8 +43,11 @@ def batchify_fn(
             if k not in all_ret:
                 all_ret[k] = []
             all_ret[k].append(ret[k])
-
-    all_ret = {k: torch.cat(all_ret[k], 0) for k in all_ret}
+    try:
+        all_ret = {k: torch.cat(all_ret[k], 0) for k in all_ret}
+    except TypeError:
+        del all_ret["network_inputs"]
+        all_ret = {k: torch.cat(all_ret[k], 0) for k in all_ret}
     return all_ret
 
 
